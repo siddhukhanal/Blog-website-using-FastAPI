@@ -1,0 +1,157 @@
+{% extends "layout.html" %}
+{% block content %}
+
+  <div id="postsContainer">
+  {% for post in posts %}
+    <article class="content-section py-3 px-4 mb-4">
+      <div class="d-flex align-items-start gap-4">
+        <img class="rounded-circle article-img flex-shrink-0"
+             src="{{post.author.image_path}}"
+             alt="{{ post.author.username }}'s profile picture"
+             width="64"
+             height="64"
+             loading="lazy">
+        <div class="flex-grow-1">
+          <div class="article-metadata mb-2">
+            <a class="me-2" href="{{url_for('user_posts',user_id=post.author.id)}}">{{ post.author.username }}</a>
+            <small class="text-body-secondary">{{ post.date_posted.strftime('%B %d,%Y') }}</small>
+          </div>
+          <h2>
+            <a class="article-title" href="{{url_for("post_page",post_id=post.id)}}">{{ post.title }}</a>
+          </h2>
+          <p class="article-content">{{ post.content }}</p>
+        </div>
+      </div>
+    </article>
+  {% endfor %}
+  </div>
+  {% if has_more %}
+    <div class="text-center mb-4">
+      <button type="button" class="btn btn-outline-primary" id="loadMoreBtn">Load More Posts</button>
+    </div>
+  {% endif %}
+{% endblock content %}
+
+{% block scripts %}
+  <script type="module">
+  import { escapeHtml, formatDate } from '/static/js/utils.js';
+
+  // 1. Get the current logged-in user's ID from Jinja2
+  // We use this to compare against post.user_id for dynamically loaded posts
+  const currentUserId = parseInt("{{ current_user.id if current_user.is_authenticated else -1 }}");
+
+  // Pagination state
+  let currentOffset = parseInt("{{ limit }}");
+  const limit = "{{ limit }}";
+  let hasMore = "{{ 'true' if has_more else 'false' }}" === "true";
+
+  const postsContainer = document.getElementById('postsContainer');
+  const loadMoreBtn = document.getElementById('loadMoreBtn');
+
+  /**
+   * Generates the HTML string for a post, including Update/Delete buttons
+   * if the logged-in user is the author.
+   */
+  function createPostHTML(post) {
+    const isAuthor = post.user_id === currentUserId;
+    
+    // Generate the action buttons HTML only if the user is the author
+    const actionButtons = isAuthor ? `
+      <div>
+        <a class="btn btn-outline-secondary btn-sm" href="/post/${post.id}/update">Update</a>
+        <button type="button" class="btn btn-outline-danger btn-sm" onclick="deletePost(${post.id})">Delete</button>
+      </div>
+    ` : '';
+
+    return `
+      <article class="content-section py-3 px-4 mb-4" id="post-${post.id}">
+        <div class="d-flex align-items-start gap-4">
+          <img class="rounded-circle article-img flex-shrink-0" 
+               src="${escapeHtml(post.author.image_path)}" 
+               alt="${escapeHtml(post.author.username)}'s profile picture" 
+               width="64" height="64" loading="lazy">
+          <div class="flex-grow-1">
+            <div class="article-metadata mb-2 d-flex justify-content-between align-items-center">
+              <div>
+                <a class="me-2" href="/users/${post.author.id}/posts">${escapeHtml(post.author.username)}</a>
+                <small class="text-body-secondary">${formatDate(post.date_posted)}</small>
+              </div>
+              ${actionButtons}
+            </div>
+            <h2>
+              <a class="article-title" href="/posts/${post.id}">${escapeHtml(post.title)}</a>
+            </h2>
+            <p class="article-content">${escapeHtml(post.content)}</p>
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  /**
+   * Global Delete Function
+   * Attached to 'window' so it's accessible from HTML onclick attributes
+   */
+  window.deletePost = async function(postId) {
+    if (!confirm('Are you sure you want to delete this post?')) return;
+
+    try {
+      const response = await fetch(`/api/posts/${postId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Option A: Refresh the page (easiest)
+        window.location.reload();
+        
+        // Option B: Remove the element without refresh (cleaner)
+        // const element = document.getElementById(`post-${postId}`);
+        // if (element) element.remove();
+      } else {
+        const errorData = await response.json();
+        alert(errorData.detail || 'Failed to delete post.');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('A network error occurred.');
+    }
+  };
+
+  async function loadMorePosts() {
+    if (!loadMoreBtn) return;
+    loadMoreBtn.disabled = true;
+    loadMoreBtn.textContent = 'Loading...';
+
+    try {
+      const response = await fetch(`/api/posts?skip=${currentOffset}&limit=${limit}`);
+      if (!response.ok) throw new Error('Failed to fetch posts');
+
+      const data = await response.json();
+
+      for (const post of data.posts) {
+        postsContainer.insertAdjacentHTML('beforeend', createPostHTML(post));
+      }
+
+      currentOffset += data.posts.length;
+      hasMore = data.has_more;
+
+      if (!hasMore) {
+        loadMoreBtn.classList.add('d-none');
+      }
+    } catch (error) {
+      console.error('Error loading posts:', error);
+      loadMoreBtn.textContent = 'Error - Click to Retry';
+      loadMoreBtn.disabled = false;
+    } finally {
+      if (hasMore && loadMoreBtn.textContent !== 'Error - Click to Retry') {
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.textContent = 'Load More Posts';
+      }
+    }
+  }
+
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener('click', loadMorePosts);
+  }
+  </script>
+{% endblock scripts %}
