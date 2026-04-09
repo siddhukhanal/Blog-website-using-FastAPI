@@ -282,6 +282,9 @@ async def update_post_dates() -> None:
 
 
 async def populate() -> None:
+    async with engine.begin() as conn:
+        await conn.run_sync(models.Base.metadata.create_all)
+    print("Database tables created/verified")
     transport = httpx.ASGITransport(app=app)
 
     async with httpx.AsyncClient(
