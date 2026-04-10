@@ -79,7 +79,7 @@ async def create_user(user: UserCreate, db: Annotated[AsyncSession, Depends(get_
     new_user = models.User(
         username=user.username,
         email=user.email.lower(),
-        password_hash=hash_passwod(user.password),
+        password_hash=hash_password(user.password),
     )
     db.add(new_user)
     await db.commit()
@@ -191,7 +191,7 @@ async def reset_password(
             detail="Invalid or expired reset token",
         )
 
-    if reset_token.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+    if reset_token.expires_at < datetime.now(timezone.utc):
         await db.delete(reset_token)
         await db.commit()
         raise HTTPException(
